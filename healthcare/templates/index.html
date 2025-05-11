@@ -1,0 +1,900 @@
+<script type="text/javascript">
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    function filledCell(cell) {
+        return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                    row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                    headerRowIndex = 0;
+                }
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+    }
+</script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stroke Risk Prediction</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+    <style>
+        :root {
+            --primary-color: #4e54c8;
+            --secondary-color: #8f94fb;
+            --success-color: #23ce6b;
+            --danger-color: #ff6b6b;
+            --light-bg: #f9f9ff;
+            --dark-text: #333344;
+        }
+        body {
+            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--dark-text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+        }
+        .container {
+            max-width: 900px;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(5px);
+        }
+        h1 {
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-weight: 700;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2.5rem;
+        }
+        .form-group {
+            margin-bottom: 25px;
+            position: relative;
+        }
+        .form-control {
+            border-radius: 10px;
+            padding: 12px 15px;
+            border: 2px solid #e0e0ff;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus {
+            box-shadow: 0 0 0 3px rgba(78, 84, 200, 0.2);
+            border-color: var(--primary-color);
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: block;
+            color: var(--primary-color);
+        }
+        .btn-predict {
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            margin-top: 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            color: white;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-predict:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 7px 14px rgba(78, 84, 200, 0.3);
+        }
+        .btn-predict:after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 5px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            border-radius: 100%;
+            transform: scale(1, 1) translate(-50%, -50%);
+            transform-origin: 50% 50%;
+        }
+        .btn-predict:focus:not(:active)::after {
+            animation: ripple 1s ease-out;
+        }
+        @keyframes ripple {
+            0% { transform: scale(0, 0); opacity: 0.5; }
+            100% { transform: scale(20, 20); opacity: 0; }
+        }
+        .result-container {
+            margin-top: 40px;
+            padding: 30px;
+            border-radius: 15px;
+            display: none;
+            transform: translateY(20px);
+            transition: all 0.5s ease;
+        }
+        .high-risk {
+            background-color: rgba(255, 107, 107, 0.2);
+            border: 2px solid var(--danger-color);
+        }
+        .low-risk {
+            background-color: rgba(35, 206, 107, 0.2);
+            border: 2px solid var(--success-color);
+        }
+        .form-section {
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            margin-bottom: 25px;
+            background-color: white;
+        }
+        .section-title {
+            border-bottom: 2px solid #e0e0ff;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        .progress-bar {
+            height: 8px;
+            background-color: #e0e0ff;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            width: 0;
+            transition: width 0.3s ease;
+        }
+        .gauge-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .gauge {
+            width: 200px;
+            height: 100px;
+            position: relative;
+            overflow: hidden;
+            border-top-left-radius: 100px;
+            border-top-right-radius: 100px;
+            margin-bottom: 10px;
+        }
+        .gauge-bg {
+            width: 200px;
+            height: 200px;
+            border-radius: 100px;
+            position: absolute;
+            background: linear-gradient(0deg, #f0f0f0 0%, #e0e0e0 100%);
+        }
+        .gauge-fill {
+            width: 200px;
+            height: 200px;
+            border-radius: 100px;
+            position: absolute;
+            background: linear-gradient(90deg, #23ce6b 0%, #ff6b6b 100%);
+            transform-origin: center bottom;
+            transform: rotate(0deg);
+            transition: transform 1s ease-out;
+        }
+        .gauge-center {
+            width: 160px;
+            height: 160px;
+            background: white;
+            border-radius: 80px;
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .percentage {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--dark-text);
+        }
+        .risk-label {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .form-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .btn-nav {
+            padding: 10px 20px;
+            border-radius: 10px;
+            background: white;
+            border: 2px solid #e0e0ff;
+            color: var(--primary-color);
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-nav:hover {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        .form-step {
+            display: none;
+        }
+        .form-step.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .step {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #e0e0ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--dark-text);
+            margin: 0 10px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .step.active {
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            transform: scale(1.1);
+        }
+        .step.completed {
+            background: var(--success-color);
+            color: white;
+        }
+        .step-line {
+            position: absolute;
+            height: 3px;
+            background-color: #e0e0ff;
+            top: 20px;
+            left: 40px;
+            width: calc(100% - 100px);
+            z-index: -1;
+        }
+        .factors-list {
+            padding: 20px;
+            background-color: #f9f9ff;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        .factor-item {
+            margin-bottom: 10px;
+            padding-left: 25px;
+            position: relative;
+        }
+        .factor-item:before {
+            content: '•';
+            position: absolute;
+            left: 8px;
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+        .risk-actions {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #fdfdff;
+            border-radius: 10px;
+            border-left: 4px solid var(--primary-color);
+        }
+        .form-floating {
+            margin-bottom: 20px;
+        }
+        .form-floating label {
+            padding: 1rem 0.75rem;
+        }
+        .info-tooltip {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            background-color: #e0e0ff;
+            color: var(--primary-color);
+            border-radius: 50%;
+            text-align: center;
+            line-height: 18px;
+            font-size: 12px;
+            margin-left: 5px;
+            cursor: pointer;
+            position: relative;
+        }
+        .info-tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: white;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            font-weight: normal;
+        }
+        .info-tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        .loader {
+            display: none;
+            width: 48px;
+            height: 48px;
+            border: 5px solid var(--primary-color);
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        @keyframes rotation {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .error-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+            border-radius: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container animate__animated animate__fadeIn">
+        <div class="step-indicator">
+            <div class="step active" id="step-1">1</div>
+            <div class="step" id="step-2">2</div>
+            <div class="step" id="step-3">3</div>
+            <div class="step-line"></div>
+        </div>
+        
+        <h1>Stroke Risk Prediction</h1>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-bar"></div>
+        </div>
+        
+        <div class="error-container" id="error-message"></div>
+        
+        <form id="prediction-form">
+            <div class="form-step active" id="form-step-1">
+                <div class="form-section">
+                    <h3 class="section-title">Personal Information</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="username">Username <span class="info-tooltip">i<span class="tooltip-text">Enter a unique username</span></span></label>
+                                <input type="text" class="form-control" id="username" name="username" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="age">Age <span class="info-tooltip">i<span class="tooltip-text">Enter your age in years</span></span></label>
+                                <input type="number" class="form-control" id="age" name="age" required min="0" max="120" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="gender">Gender <span class="info-tooltip">i<span class="tooltip-text">Select your gender</span></span></label>
+                                <select class="form-control" id="gender" name="gender" required>
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="ever_married">Ever Married <span class="info-tooltip">i<span class="tooltip-text">Have you ever been married?</span></span></label>
+                                <select class="form-control" id="ever_married" name="ever_married" required>
+                                    <option value="">Select</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="Residence_type">Residence Type <span class="info-tooltip">i<span class="tooltip-text">Urban or rural area</span></span></label>
+                                <select class="form-control" id="Residence_type" name="Residence_type" required>
+                                    <option value="">Select</option>
+                                    <option value="Urban">Urban</option>
+                                    <option value="Rural">Rural</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="work_type">Work Type <span class="info-tooltip">i<span class="tooltip-text">Type of employment</span></span></label>
+                                <select class="form-control" id="work_type" name="work_type" required>
+                                    <option value="">Select Work Type</option>
+                                    <option value="Private">Private</option>
+                                    <option value="Self-employed">Self-employed</option>
+                                    <option value="Govt_job">Government Job</option>
+                                    <option value="children">Children</option>
+                                    <option value="Never_worked">Never worked</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-nav">
+                    <div></div>
+                    <button type="button" class="btn btn-nav" id="next-1">Next <i class="fas fa-arrow-right"></i></button>
+                </div>
+            </div>
+            
+            <div class="form-step" id="form-step-2">
+                <div class="form-section">
+                    <h3 class="section-title">Health Information</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="hypertension">Hypertension <span class="info-tooltip">i<span class="tooltip-text">Do you have hypertension?</span></span></label>
+                                <select class="form-control" id="hypertension" name="hypertension" required>
+                                    <option value="">Select</option>
+                                    <option value="1">Yes</option>
+                                    <option value="0">No</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="heart_disease">Heart Disease <span class="info-tooltip">i<span class="tooltip-text">Do you have heart disease?</span></span></label>
+                                <select class="form-control" id="heart_disease" name="heart_disease" required>
+                                    <option value="">Select</option>
+                                    <option value="1">Yes</option>
+                                    <option value="0">No</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="avg_glucose_level">Average Glucose Level (mg/dL) <span class="info-tooltip">i<span class="tooltip-text">Normal fasting blood sugar is under 100 mg/dL</span></span></label>
+                                <input type="number" class="form-control" id="avg_glucose_level" name="avg_glucose_level" required min="0" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="bmi">BMI <span class="info-tooltip">i<span class="tooltip-text">Body Mass Index (weight in kg / height in m²)</span></span></label>
+                                <input type="number" class="form-control" id="bmi" name="bmi" required min="0" max="100" step="0.01">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label for="smoking_status">Smoking Status <span class="info-tooltip">i<span class="tooltip-text">Your smoking habits</span></span></label>
+                                <select class="form-control" id="smoking_status" name="smoking_status" required>
+                                    <option value="">Select Smoking Status</option>
+                                    <option value="formerly smoked">Formerly Smoked</option>
+                                    <option value="never smoked">Never Smoked</option>
+                                    <option value="smokes">Currently Smokes</option>
+                                    <option value="Unknown">Unknown</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-nav">
+                    <button type="button" class="btn btn-nav" id="prev-2">Previous</button>
+                    <button type="button" class="btn btn-nav" id="next-2">Next</button>
+                </div>
+            </div>
+            
+            <div class="form-step" id="form-step-3">
+                <div class="form-section">
+                    <h3 class="section-title">Summary</h3>
+                    <p>Please review your information below before submitting:</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Username:</strong> <span id="summary-username"></span></p>
+                            <p><strong>Age:</strong> <span id="summary-age"></span></p>
+                            <p><strong>Gender:</strong> <span id="summary-gender"></span></p>
+                            <p><strong>Ever Married:</strong> <span id="summary-married"></span></p>
+                            <p><strong>Residence Type:</strong> <span id="summary-residence"></span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Work Type:</strong> <span id="summary-work"></span></p>
+                            <p><strong>Hypertension:</strong> <span id="summary-hypertension"></span></p>
+                            <p><strong>Heart Disease:</strong> <span id="summary-heart"></span></p>
+                            <p><strong>Avg. Glucose Level:</strong> <span id="summary-glucose"></span> mg/dL</p>
+                            <p><strong>BMI:</strong> <span id="summary-bmi"></span></p>
+                            <p><strong>Smoking Status:</strong> <span id="summary-smoking"></span></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-nav">
+                    <button type="button" class="btn btn-nav" id="prev-3">Previous</button>
+                    <button type="submit" class="btn btn-predict">Predict Stroke Risk</button>
+                </div>
+            </div>
+        </form>
+        
+        <div id="result" class="result-container animate__animated">
+            <h3 id="result-title" class="text-center mb-4">Prediction Result</h3>
+            
+            <div class="gauge-container">
+                <div class="gauge">
+                    <div class="gauge-bg"></div>
+                    <div class="gauge-fill" id="gauge-fill"></div>
+                </div>
+                <div class="gauge-center">
+                    <div class="percentage" id="probability-display">0%</div>
+                    <div class="risk-label" id="risk-label">Risk</div>
+                </div>
+            </div>
+            
+            <p id="result-message" class="text-center mt-4 mb-3"></p>
+            
+            <div class="factors-list" id="risk-factors">
+                <h4>Key Risk Factors:</h4>
+                <div class="factor-item">Age is a significant risk factor for stroke</div>
+                <div class="factor-item" id="factor-glucose">High glucose levels increase stroke risk</div>
+                <div class="factor-item" id="factor-hypertension">Hypertension significantly increases stroke risk</div>
+                <div class="factor-item" id="factor-heart">Heart disease is a major risk factor</div>
+                <div class="factor-item" id="factor-smoking">Smoking increases stroke risk</div>
+            </div>
+            
+            <div class="risk-actions">
+                <h4>Recommended Actions:</h4>
+                <p>Based on your results, consider the following steps:</p>
+                <ul>
+                    <li>Consult with your healthcare provider</li>
+                    <li>Monitor your blood pressure regularly</li>
+                    <li>Maintain a healthy diet and exercise routine</li>
+                    <li>If you smoke, consider quitting</li>
+                    <li>Keep your glucose levels in check</li>
+                </ul>
+                <p class="text-center mt-3"><strong>Remember:</strong> This tool provides an estimate only and is not a substitute for professional medical advice.</p>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button type="button" class="btn btn-nav" id="start-over">Start Over</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="overlay" id="loading-overlay">
+        <div class="loader"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/js/all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let currentStep = 1;
+            const totalSteps = 3;
+            
+            // Initialize results storage
+            let savedResults = JSON.parse(localStorage.getItem('strokePredictions')) || [];
+            
+            // Update progress bar
+            function updateProgressBar() {
+                const progressPercent = ((currentStep - 1) / (totalSteps - 1)) * 100;
+                $('#progress-bar').css('width', progressPercent + '%');
+            }
+            
+            // Navigate to next step
+            function nextStep() {
+                if (validateStep(currentStep)) {
+                    $(`#form-step-${currentStep}`).removeClass('active');
+                    currentStep++;
+                    $(`#form-step-${currentStep}`).addClass('active animate__animated animate__fadeIn');
+                    
+                    // Update step indicators
+                    $(`.step`).removeClass('active');
+                    $(`#step-${currentStep}`).addClass('active');
+                    
+                    // Mark previous steps as completed
+                    for (let i = 1; i < currentStep; i++) {
+                        $(`#step-${i}`).addClass('completed');
+                    }
+                    
+                    updateProgressBar();
+                    
+                    // If final step, update summary
+                    if (currentStep === 3) {
+                        updateSummary();
+                    }
+                }
+            }
+            
+            // Navigate to previous step
+            function prevStep() {
+                $(`#form-step-${currentStep}`).removeClass('active');
+                currentStep--;
+                $(`#form-step-${currentStep}`).addClass('active animate__animated animate__fadeIn');
+                
+                // Update step indicators
+                $(`.step`).removeClass('active');
+                $(`#step-${currentStep}`).addClass('active');
+                
+                updateProgressBar();
+            }
+            
+            // Validate current step
+            function validateStep(step) {
+                let isValid = true;
+                
+                $(`#form-step-${step} input, #form-step-${step} select`).each(function() {
+                    if ($(this).prop('required') && !$(this).val()) {
+                        isValid = false;
+                        $(this).addClass('is-invalid');
+                    } else {
+                        $(this).removeClass('is-invalid');
+                    }
+                });
+                
+                return isValid;
+            }
+            
+            // Update summary before submission
+            function updateSummary() {
+                $('#summary-username').text($('#username').val());
+                $('#summary-age').text($('#age').val());
+                $('#summary-gender').text($('#gender').val());
+                $('#summary-married').text($('#ever_married').val());
+                $('#summary-residence').text($('#Residence_type').val());
+                $('#summary-work').text($('#work_type').val());
+                $('#summary-hypertension').text($('#hypertension').val() === '1' ? 'Yes' : 'No');
+                $('#summary-heart').text($('#heart_disease').val() === '1' ? 'Yes' : 'No');
+                $('#summary-glucose').text($('#avg_glucose_level').val());
+                $('#summary-bmi').text($('#bmi').val());
+                $('#summary-smoking').text($('#smoking_status').val());
+            }
+            
+            // Navigation button click handlers
+            $('#next-1').click(nextStep);
+            $('#next-2').click(nextStep);
+            $('#prev-2').click(prevStep);
+            $('#prev-3').click(prevStep);
+            
+            // Start over button
+            $('#start-over').click(function() {
+                $('#prediction-form')[0].reset();
+                $('#result').removeClass('animate__fadeIn').addClass('animate__fadeOut');
+                
+                setTimeout(function() {
+                    $('#result').hide().removeClass('animate__fadeOut');
+                    
+                    // Reset to first step
+                    $('.form-step').removeClass('active');
+                    $('#form-step-1').addClass('active');
+                    currentStep = 1;
+                    
+                    // Reset step indicators
+                    $('.step').removeClass('active completed');
+                    $('#step-1').addClass('active');
+                    
+                    updateProgressBar();
+                    $('#prediction-form').show();
+                    $('#error-message').hide();
+                }, 500);
+            });
+            
+            // Field validation on input change
+            $('input, select').on('change', function() {
+                if ($(this).prop('required') && !$(this).val()) {
+                    $(this).addClass('is-invalid');
+                } else {
+                    $(this).removeClass('is-invalid');
+                }
+            });
+            
+            // Form submission with AJAX
+            $('#prediction-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                if (validateStep(currentStep)) {
+                    // Show loading overlay
+                    $('#loading-overlay').fadeIn();
+                    $('#error-message').hide();
+                    
+                    $.ajax({
+                        url: '/predict',
+                        type: 'POST',
+                        data: $(this).serialize(),
+                        success: function(response) {
+                            // Save result locally
+                            const result = saveResult(response);
+                            
+                            // Send result to backend for report generation
+                            $.ajax({
+                                url: '/save-report',
+                                type: 'POST',
+                                contentType: 'application/json',
+                                data: JSON.stringify(result),
+                                success: function() {
+                                    // Hide loading overlay
+                                    $('#loading-overlay').fadeOut();
+                                    
+                                    // Process and display result
+                                    processResult(response);
+                                },
+                                error: function(error) {
+                                    // Hide loading overlay
+                                    $('#loading-overlay').fadeOut();
+                                    
+                                    // Show error message
+                                    const errorMsg = error.responseJSON?.error || 'Failed to save report on server.';
+                                    $('#error-message').text(errorMsg).show();
+                                    console.error(error);
+                                    
+                                    // Still display result to user
+                                    processResult(response);
+                                }
+                            });
+                        },
+                        error: function(error) {
+                            // Hide loading overlay
+                            $('#loading-overlay').fadeOut();
+                            
+                            // Show error message
+                            const errorMsg = error.responseJSON?.error || 'An error occurred while processing your request.';
+                            $('#error-message').text(errorMsg).show();
+                            console.error(error);
+                        }
+                    });
+                }
+            });
+            
+            // Save prediction result to local storage and return result object
+            function saveResult(response) {
+                const probability = response.probability * 100; // Convert to percentage
+                const riskLevel = probability > 50 ? 'High' : probability > 25 ? 'Moderate' : 'Low';
+                
+                const result = {
+                    username: $('#username').val(),
+                    timestamp: new Date().toISOString(),
+                    age: $('#age').val(),
+                    gender: $('#gender').val(),
+                    ever_married: $('#ever_married').val(),
+                    residence_type: $('#Residence_type').val(),
+                    work_type: $('#work_type').val(),
+                    hypertension: $('#hypertension').val() === '1' ? 'Yes' : 'No',
+                    heart_disease: $('#heart_disease').val() === '1' ? 'Yes' : 'No',
+                    avg_glucose_level: $('#avg_glucose_level').val(),
+                    bmi: $('#bmi').val(),
+                    smoking_status: $('#smoking_status').val(),
+                    probability: probability,
+                    risk_level: riskLevel
+                };
+                
+                savedResults.push(result);
+                localStorage.setItem('strokePredictions', JSON.stringify(savedResults));
+                
+                return result;
+            }
+            
+            // Process and display prediction results
+            function processResult(response) {
+                const probability = response.probability * 100; // Convert to percentage
+                const riskLevel = probability > 50 ? 'High' : probability > 25 ? 'Moderate' : 'Low';
+                
+                // Fallback contributing factors if not provided by backend
+                const contributingFactors = response.contributingFactors || {
+                    age: parseFloat($('#age').val()) > 45,
+                    hypertension: $('#hypertension').val() === '1',
+                    heartDisease: $('#heart_disease').val() === '1',
+                    glucose: parseFloat($('#avg_glucose_level').val()) > 140,
+                    smoking: $('#smoking_status').val() === 'smokes' || $('#smoking_status').val() === 'formerly smoked'
+                };
+                
+                // Update gauge
+                const rotation = (probability / 100) * 180; // Map 0-100% to 0-180 degrees
+                $('#gauge-fill').css('transform', `rotate(${rotation}deg)`);
+                
+                // Update percentage and risk label
+                $('#probability-display').text(`${probability.toFixed(2)}%`);
+                $('#risk-label').text(`${riskLevel} Risk`);
+                
+                // Update result message and styling
+                $('#result').removeClass('high-risk low-risk');
+                if (riskLevel === 'High') {
+                    $('#result').addClass('high-risk');
+                    $('#result-message').text(response.message || 'Your stroke risk is high. Please consult a healthcare professional immediately.');
+                } else if (riskLevel === 'Moderate') {
+                    $('#result').addClass('high-risk');
+                    $('#result-message').text(response.message || 'Your stroke risk is moderate. Consider discussing with your doctor.');
+                } else {
+                    $('#result').addClass('low-risk');
+                    $('#result-message').text(response.message || 'Your stroke risk is low. Continue maintaining a healthy lifestyle.');
+                }
+                
+                // Update risk factors visibility
+                $('#factor-glucose').toggle(contributingFactors.glucose);
+                $('#factor-hypertension').toggle(contributingFactors.hypertension);
+                $('#factor-heart').toggle(contributingFactors.heartDisease);
+                $('#factor-smoking').toggle(contributingFactors.smoking);
+                
+                // Show result with animation
+                $('#result').show().removeClass('animate__fadeOut').addClass('animate__fadeIn');
+                
+                // Hide form
+                $('#prediction-form').hide();
+            }
+        });
+    </script>
+</body>
+</html>
