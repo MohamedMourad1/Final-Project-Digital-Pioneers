@@ -74,7 +74,7 @@ See `requirements.txt` for a complete list of Python packages. Key dependencies 
 - openpyxl
 
 ## Notes
-- The model expects preprocessed data matching the training pipeline. For production, consider using the commented full pipeline in `stroke_model.py` for raw data processing.
+- The model expects preprocessed data matching the training pipeline. For production, consider using the commented full pipeline in `stroke_model_notebook.ipynb` for raw data processing.
 - The web interface uses Bootstrap, jQuery, and XLSX.js for frontend functionality.
 - Prediction reports are stored in the `reports` directory with daily filenames (e.g., `stroke_predictions_20250511.xlsx`).
 - The application includes error handling for invalid inputs and server errors.
